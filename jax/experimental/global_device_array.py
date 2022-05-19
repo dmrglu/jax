@@ -408,6 +408,21 @@ class GlobalDeviceArray:
       db.block_until_ready()
     return self
 
+  def _value(self):
+    if not config.jax_array:
+      raise NotImplementedError('Please set jax_array config option to True to '
+                                'use this feature.')
+    if self.mesh.is_multi_process:
+      raise RuntimeError("Fetching value for GDA that's spans non-addressable "
+                         "devices is not possible. You can use "
+                         "`multihost_utils.process_allgather` for this use case.")
+    npy_value = np.empty(self.shape, self.dtype)
+    for s in self.local_shards:
+      if s.replica_id == 0:
+        s.data.copy_to_host_async()
+        npy_value[s.index] = s.data.to_py()
+    return npy_value
+
   @classmethod
   def from_callback(cls, global_shape: Shape, global_mesh: pxla.Mesh,
                     mesh_axes: MeshAxes, data_callback: Callable[[Index],
